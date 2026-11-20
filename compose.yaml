@@ -1,0 +1,39 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.2.9-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: monitor
+      RABBITMQ_DEFAULT_PASS: local-demo
+    ports:
+      - "127.0.0.1:5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  monitor:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY decision.py monitor.py demo.py test_instances.json ./
+        CMD ["python", "-u", "monitor.py"]
+    environment:
+      AMQP_URL: amqp://monitor:local-demo@rabbitmq:5672/%2F
+      ROBOT_IDS: ${ROBOT_IDS:-Natasha}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  demo:
+    profiles: ["demo"]
+    extends:
+      service: monitor
+    command: ["python", "-u", "demo.py"]
+    depends_on:
+      monitor:
+        condition: service_started
