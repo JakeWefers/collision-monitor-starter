@@ -55,6 +55,10 @@ class Robot:
     def __init__(self, report):
         self.device_id = report["device_id"]
         self.path = tuple(point(waypoint) for waypoint in report["path"])
+        heading = self.path[0][2]
+        for waypoint in self.path[1:]:
+            if abs(math.remainder(waypoint[2] - heading, 2 * math.pi)) > 1e-8:
+                raise ValueError(f"{self.device_id} must keep the same heading along its path")
         self.waypoint = 0
         self.still_reports = 0
         self.update(report)

@@ -6,6 +6,10 @@ from time import monotonic
 
 def point(report):
     """Read the x, y and heading of a waypoint or robot report."""
+    # Turns the dicitonary wich the robot creates of its state at every 
+    # tik into a three-tuple of floats. 
+    # point({"x": "2.5", "y": 3, "theta": 0}) -->  Returns (2.5, 3.0, 0.0)
+
     result = (float(report["x"]), float(report["y"]), float(report["theta"]))
     if not all(math.isfinite(value) for value in result):
         raise ValueError("A waypoint must have finite coordinates")
@@ -17,39 +21,37 @@ def dot(a, b):
 
 
 class Footprint:
-    """A robot's rectangle, or the area covered as it moves one waypoint."""
+    """A fixed-heading rectangle, or the area it sweeps between two waypoints."""
 
     def __init__(self, start, end):
         self.start, self.end = start, end
-        self.length, self.width = 1.430 / 2, 0.630 / 2  # Half-dimensions in meters.
-        angle = start[2]
-        if abs(math.remainder(end[2] - angle, 2 * math.pi)) > 1e-8:
-            # A square around the rotation covers every intermediate heading.
-            self.length = self.width = math.hypot(self.length, self.width)
-            angle = 0
-        self.forward = (math.cos(angle), math.sin(angle))
-        self.side = (-math.sin(angle), math.cos(angle))
+        self.length, self.width = 1.430 / 2, 0.630 / 2  # Half-dimensions in meters as position is assumed to be the center.
+        angle = start[2] # this is theta. 
+        self.forward = (math.cos(angle), math.sin(angle)) #Direction is turned from angle to vector with x, y components.
+        self.side = (-math.sin(angle), math.cos(angle)) #Direction of width.
+        # These directions ("axes") are used to determine possible collisions later on.  
         self.axes = [self.forward, self.side]
-        dx, dy = end[0] - start[0], end[1] - start[1]
-        distance = math.hypot(dx, dy)
-        if distance > 1e-8:
-            self.axes.append((-dy / distance, dx / distance))
-
+        
+    # shadow detrmines the area that is needed to be free for a move. 
+    # f.e if x=0 is starting point and x=2 is endpoint. The whole corridor (inclduing length and widthof robot)
+    # needs to be free to move legally. 
     def shadow(self, axis):
         """The two endpoints of the shape's shadow on a line."""
         a, b = dot(self.start, axis), dot(self.end, axis)
         margin = abs(dot(self.forward, axis)) * self.length + abs(dot(self.side, axis)) * self.width
         return min(a, b) - margin, max(a, b) + margin
 
+    
     def overlaps(self, other):
         for axis in self.axes + other.axes:
             left, right = self.shadow(axis)
             other_left, other_right = other.shadow(axis)
             if right < other_left - 1e-8 or other_right < left - 1e-8:
-                return False  # A gap in any direction separates the two shapes.
+                return False  # We want a nonzero gap between robots in any direction.
         return True
+        #False means--> No overlap, with this no ccollision will occur.
 
-
+    # Now we need to define moving/stopping and then a way to avoid deadlocks.
 class Move:
     def __init__(self, robot, stop_at, crossings_cleared):
         self.robot = robot
@@ -172,6 +174,9 @@ class CrossingPlanner:
         return legal
 
 
+
+#weights used in the scheduling problem. This can be heavily improved. 
+# The upside is that changes should be conflict free
 def weight(report, now_ms):
     """The provisional weight. The final urgency formula can go here."""
     seconds_left = max(1, (report["deadline"] - now_ms) / 1000)
@@ -179,12 +184,19 @@ def weight(report, now_ms):
     return 1 / (seconds_left * battery)
 
 
+
+# The rank is determined through considering the urgency to be a weighted
+# scheduling problem 1||sum wjCj, where the weight is determined by the battery level and the time left to complete the task
+# loaded or unloaded is NOT taking into consideration as 
+# I couldnt really find a reason why loaded would be prioritized over unloaded. 
+# It might be that the unloaded robot is prioritized since it has to pick up a important load. 
+
 def rank_moves(moves, robots, now_ms):
     ranked = []
     for move in moves:
         robot = robots[move.robot]
         count = robot.report["remaining_crossings"]
-        score = weight(robot.report, now_ms) / count if count else 0
+        score = weight(robot.report, now_ms) / count if count else 0 # This is basically Smiths rule.
         ranked.append((move, score))
     # Bigger scores go first. Use the device ID when scores are tied.
     return sorted(ranked, key=lambda item: (-item[1], robots[item[0].robot].device_id))
