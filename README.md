@@ -61,7 +61,15 @@ make the number of crossing, battery status or the number of crossings, my weigh
     different corners of the map, then they should be able to move at the same time, 
      --> We would then model as a 2||sum(wjCj) sheduling problem. 
 
+     This is also the main change I would perform to scale this to 100/1000 robots. 
+     We would additionally need logic to seperate these groups. 
+
+- Instances in which simulatenous moves are necessary are not considered at all. 
+My solution would leave these instances in constant PAUSE state. 
+
 - My implementation of information exhange using RabbitMQ is done with Codex. I didnt know how to do this myself so I had an LLM write this part of the Code. Unfortunately I am not able to verify if everything that happens here is sensible or not myself. 
+
+
 
 
 
@@ -83,6 +91,8 @@ HOW IT WORKS:
         - If the priority queue chooses A before B, then we check moves of A, and then to avoid deadlock how B would move. If it determined that at one postional state (f.e A at waypoint 3 
         B at waypoint 7) there is no way to finish, it saves the state FALSE in this position. This 
         can be reused everytime in later checks that A and B might be in this constellation. 
+
+- It is beacuse of this check, that every approved move preserves a way to finish, and every completed move advances a waypoint, so the fleet cannot cycle back to an earlier set of positions. This holds when the planner can find a feasible one-robot-at-a-time sequence and the robots execute it as planned. The monitor can still leave everyone paused if the search times out or the layout requires simultaneous moves.
 
 - Send commands and confirm the stop through RabbitMQ. The monitor sends Resume to the selected robot and Pause to the others through their individual robot.<device_id>.actions queues. When the moving robot reports that it has reached its stopping waypoint, the monitor immediately sends it Pause. It waits for two newer reports showing the same waypoint (so, if after two ticks the positon (x,y) hasnt changed, this tells us that indeed the robot has successfully stopped) before choosing the next move.
 
