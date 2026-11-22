@@ -192,7 +192,8 @@ class CollisionMonitor:
         now_ms = int(time() * 1000)
         robots = [self.robots[name] for name in self.robot_ids if name in self.robots]
         positions = tuple(robot.waypoint for robot in robots)
-        if self.planner is not None:
+        had_planner = self.planner is not None
+        if had_planner:
             self.update_counts(robots, positions)
         reason = self.decide(robots, positions, now_ms)
 
@@ -205,8 +206,22 @@ class CollisionMonitor:
             self.send_action(name, action)
 
         if self.show_trace:
-            print(json.dumps({
+            trace = {
                 "timestamp": now_ms,
+                "robots": [
+                    {
+                        "device_id": robot.device_id,
+                        "waypoint": robot.waypoint,
+                        "x": robot.report["x"],
+                        "y": robot.report["y"],
+                        "theta": robot.report["theta"],
+                        "report_timestamp": robot.report["timestamp"],
+                        "battery_level": robot.report["battery_level"],
+                        "deadline": robot.report["deadline"],
+                        "still_reports": robot.still_reports,
+                    }
+                    for robot in robots
+                ],
                 "remaining_crossings": self.remaining_crossings,
                 "active_move": {
                     "device_id": self.robot_ids[self.active.robot],
@@ -215,7 +230,10 @@ class CollisionMonitor:
                 } if self.active else None,
                 "actions": actions,
                 "reason": reason,
-            }), flush=True)
+            }
+            if not had_planner and self.planner is not None:
+                trace["routes"] = {robot.device_id: robot.path for robot in robots}
+            print(json.dumps(trace), flush=True)
 
     def update_counts(self, robots, positions):
         self.remaining_crossings, counts = self.planner.counts(positions)
