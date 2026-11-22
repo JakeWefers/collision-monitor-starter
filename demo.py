@@ -112,7 +112,7 @@ def main():
     args = parser.parse_args()
     with Path(__file__).with_name("test_instances.json").open() as file:
         instances = json.load(file)
-    # Each instance is a list of robot state messages. Each mock starts at its first waypoint.
+    # Each instance describes a fleet. Each mock starts at its first waypoint.
     if not instances:
         parser.error("test_instances.json is empty. Add a test instance before running the demo.")
     if not 1 <= args.instance <= len(instances):
