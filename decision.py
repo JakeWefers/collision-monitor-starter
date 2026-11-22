@@ -200,7 +200,10 @@ def rank_moves(moves, robots, now_ms):
     for move in moves:
         robot = robots[move.robot]
         count = robot.report["remaining_crossings"]
-        score = weight(robot.report, now_ms) / count if count else 0 # This is basically Smiths rule.
+        score = weight(robot.report, now_ms) / max(1, count)
+        # This is basically Smiths rule
+        # With the max(count,1), we avoid the special case where robots did not 
+        # have any crossing left and were therefore weighted as 0 e.g worthless. 
         ranked.append((move, score))
     # Bigger scores go first. Use the device ID when scores are tied.
     return sorted(ranked, key=lambda item: (-item[1], robots[item[0].robot].device_id))
