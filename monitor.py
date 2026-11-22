@@ -170,15 +170,23 @@ class CollisionMonitor:
         if positions == self.planner.goals:
             return "All robots reached their goals", []
 
+        if not self.planner.goals_are_clear:
+            return "No legal crossing sequence reaches all goals", []
+
+        deadline = monotonic() + self.search_seconds
         try:
-            moves = self.planner.legal_moves(positions, self.search_seconds)
+            candidates = self.planner.possible_moves(positions, deadline)
+            ranked = rank_moves(candidates, robots, now_ms)
+
+            for move, score in ranked:
+                next_positions = move.result(positions)
+                if self.planner.can_finish(next_positions, deadline):
+                    self.active = move
+                    return "Selected the highest-ranked legal move", [(move, score)]
         except (TimeoutError, RecursionError):
             return "Legal-move search reached its limit", []
-        ranked = rank_moves(moves, robots, now_ms)
-        if not ranked:
-            return "No legal crossing sequence reaches all goals", []
-        self.active = ranked[0][0]
-        return "Selected the highest-ranked legal move", ranked
+
+        return "No legal crossing sequence reaches all goals", []
 
     def tick(self):
         """Make a decision, send the actions, and print one trace entry."""

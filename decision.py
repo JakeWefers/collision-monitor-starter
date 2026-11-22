@@ -67,7 +67,7 @@ class Move:
 class CrossingPlanner:
     def __init__(self, routes):
         self.goals = tuple(len(path) - 1 for path in routes)
-        self.parked = [[Footprint(p, p) for p in path] for path in routes]
+        self.parked = [[Footprint(p, p) for p in path] for path in routes] #occupied space of robot at stationry point (start AND end is p)
         self.steps = []
         for robot, path in enumerate(routes):
             sweeps = [Footprint(path[i], path[i + 1]) for i in range(len(path) - 1)]
@@ -76,10 +76,11 @@ class CrossingPlanner:
 
         # For each robot and each neighbor, record the neighbor's last
         # conflicting step for every step on this robot's route.
+        # This is every position along a robots waypoints, in which a robot is in the path of another robot. 
         self.conflicts = [{} for path in routes]
         for a in range(len(routes)):
             for b in range(a + 1, len(routes)):
-                a_steps = [-1] * len(routes[a])
+                a_steps = [-1] * len(routes[a]) 
                 b_steps = [-1] * len(routes[b])
                 for i, step_a in enumerate(self.steps[a]):
                     for j, step_b in enumerate(self.steps[b]):
@@ -88,10 +89,11 @@ class CrossingPlanner:
                 if max(a_steps) >= 0:
                     self.conflicts[a][b] = a_steps
                     self.conflicts[b][a] = b_steps
-
+          
         self.goals_are_clear = self.overlap_at(self.goals) is None
         self.answers = {self.goals: self.goals_are_clear}
         self.checked_advances = {}
+
 
     def overlap_at(self, positions):
         for a in range(len(positions)):
@@ -106,17 +108,19 @@ class CrossingPlanner:
         for other, steps in self.conflicts[robot].items():
             pending = []
             for step in range(positions[robot], len(steps)):
-                if steps[step] >= positions[other]:
+                if steps[step] >= positions[other]:  #if robot a's position (f.e 6) has alread passed the collision point, (f.e 3)
+                    # we no longer need to keep trach of it, it is therefore discarded. 
                     pending.append(step)
             if pending:
                 crossings.append((pending[0], pending[-1] + 1))
         return crossings
 
+    #remaining crossing. This is used as a stand in for processing time of robot.
     def counts(self, positions):
         counts = [len(self.crossings_left(robot, positions)) for robot in range(len(positions))]
         return sum(counts) // 2, counts  # Each pair appears on two robots' lists.
 
-    def clear_to_stop(self, robot, start, stop, positions):
+    def path_is_clear(self, robot, start, stop, positions):
         for other, waypoint in enumerate(positions):
             if robot == other:
                 continue
@@ -149,7 +153,7 @@ class CrossingPlanner:
                 # If two crossings overlap, stop as soon as the first one clears.
                 stop = max(clear_at, next_entry)
 
-            if self.clear_to_stop(robot, start, stop, positions):
+            if self.path_is_clear(robot, start, stop, positions):
                 cleared = sum(clear_at <= stop for _, clear_at in crossings)
                 yield Move(robot, stop, cleared)
 
@@ -164,7 +168,7 @@ class CrossingPlanner:
         return False
 
     def legal_moves(self, positions, search_seconds=0.4):
-        if not self.goals_are_clear or self.overlap_at(positions) is not None:
+        if not self.goals_are_clear:
             return []
         deadline = monotonic() + search_seconds
         legal = []
@@ -175,8 +179,8 @@ class CrossingPlanner:
 
 
 
-#weights used in the scheduling problem. This can be heavily improved. 
-# The upside is that changes should be conflict free
+# weights used in the scheduling problem. This can be heavily improved. 
+# The upside is that changes should be conflict free with all other implemenation.
 def weight(report, now_ms):
     """The provisional weight. The final urgency formula can go here."""
     seconds_left = max(1, (report["deadline"] - now_ms) / 1000)
