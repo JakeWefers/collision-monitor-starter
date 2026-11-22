@@ -180,6 +180,9 @@ class CollisionMonitor:
             for move, _ in ranked:
                 next_positions = move.result(positions)
                 if self.planner.can_finish(next_positions, deadline):
+                    # This is EXTREMELY expensive I think in order n^n...
+                    # A faster check could accept the move if it gets everyone to their goals
+                    # or leaves at least one clear next move. This can miss later deadlocks though.
                     self.active = move
                     return "Selected the highest-ranked legal move"
         except (TimeoutError, RecursionError):
