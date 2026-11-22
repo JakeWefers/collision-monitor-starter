@@ -144,49 +144,48 @@ class CollisionMonitor:
 
     def decide(self, robots, positions, now_ms):
         if self.fault:
-            return self.fault, []
+            return self.fault
         if len(robots) < len(self.robot_ids):
-            return "Waiting for reports from every robot", []
+            return "Waiting for reports from every robot"
         if any(monotonic() - robot.last_seen > 3 for robot in robots):
             if self.active:
                 self.fail("A robot stopped reporting during a move")
-                return self.fault, []
+                return self.fault
             if self.planner is None:
                 for robot in robots:
                     robot.still_reports = 0
-            return "Waiting for fresh reports", []
+            return "Waiting for fresh reports"
         if self.planner is None:
             if any(robot.still_reports < 2 for robot in robots):
-                return "Confirming starting positions", []
+                return "Confirming starting positions"
             self.planner = CrossingPlanner([robot.path for robot in robots])
             self.update_counts(robots, positions)
 
         if self.active:
-            reason = "Confirming stop" if self.stopping else "Moving to the stopping waypoint"
-            return reason, []
+            return "Confirming stop" if self.stopping else "Moving to the stopping waypoint"
         if self.planner.overlap_at(positions) is not None:
             self.fail("Two robots are already overlapping")
-            return self.fault, []
+            return self.fault
         if positions == self.planner.goals:
-            return "All robots reached their goals", []
+            return "All robots reached their goals"
 
         if not self.planner.goals_are_clear:
-            return "No legal crossing sequence reaches all goals", []
+            return "No legal crossing sequence reaches all goals"
 
         deadline = monotonic() + self.search_seconds
         try:
             candidates = self.planner.possible_moves(positions, deadline)
             ranked = rank_moves(candidates, robots, now_ms)
 
-            for move, score in ranked:
+            for move, _ in ranked:
                 next_positions = move.result(positions)
                 if self.planner.can_finish(next_positions, deadline):
                     self.active = move
-                    return "Selected the highest-ranked legal move", [(move, score)]
+                    return "Selected the highest-ranked legal move"
         except (TimeoutError, RecursionError):
-            return "Legal-move search reached its limit", []
+            return "Legal-move search reached its limit"
 
-        return "No legal crossing sequence reaches all goals", []
+        return "No legal crossing sequence reaches all goals"
 
     def tick(self):
         """Make a decision, send the actions, and print one trace entry."""
@@ -195,7 +194,7 @@ class CollisionMonitor:
         positions = tuple(robot.waypoint for robot in robots)
         if self.planner is not None:
             self.update_counts(robots, positions)
-        reason, ranked = self.decide(robots, positions, now_ms)
+        reason = self.decide(robots, positions, now_ms)
 
         actions = {}
         for name in self.robot_ids:
@@ -208,13 +207,7 @@ class CollisionMonitor:
         if self.show_trace:
             print(json.dumps({
                 "timestamp": now_ms,
-                "robots": [robot.report for robot in robots],
                 "remaining_crossings": self.remaining_crossings,
-                "ranked_moves": [
-                    {"device_id": robots[move.robot].device_id, "stop_at_waypoint": move.stop_at,
-                     "crossings_cleared": move.crossings_cleared, "score": score}
-                    for move, score in ranked
-                ],
                 "active_move": {
                     "device_id": self.robot_ids[self.active.robot],
                     "stop_at_waypoint": self.active.stop_at,
